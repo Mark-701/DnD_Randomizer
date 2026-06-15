@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>D&D Генератор персонажа</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+    <h1>D&D Генератор персонажа</h1>
+
+    <div class="select-block">
+        <div class="field">
+            <label for="raceSelect">Раса</label>
+            <select id="raceSelect"></select>
+        </div>
+
+        <div class="field">
+            <label for="classSelect">Класс</label>
+            <select id="classSelect"></select>
+        </div>
+
+        <div class="field">
+            <label for="backgroundSelect">Предыстория</label>
+            <select id="backgroundSelect"></select>
+        </div>
+
+        <div class="field">
+            <label for="levelInput">Уровень</label>
+            <input type="number" id="levelInput" value="1" min="1" max="20">
+        </div>
+    </div>
+
+    <h2>Характеристики</h2>
+
+    <div class="abilities-block">
+        <div class="ability-card">
+            <label for="strengthInput">Сила</label>
+            <input type="number" id="strengthInput" min="1" max="30">
+            <span id="strengthModifier">+0</span>
+        </div>
+
+        <div class="ability-card">
+            <label for="dexterityInput">Ловкость</label>
+            <input type="number" id="dexterityInput" min="1" max="30">
+            <span id="dexterityModifier">+0</span>
+        </div>
+
+        <div class="ability-card">
+            <label for="constitutionInput">Телосложение</label>
+            <input type="number" id="constitutionInput" min="1" max="30">
+            <span id="constitutionModifier">+0</span>
+        </div>
+
+        <div class="ability-card">
+            <label for="intelligenceInput">Интеллект</label>
+            <input type="number" id="intelligenceInput" min="1" max="30">
+            <span id="intelligenceModifier">+0</span>
+        </div>
+
+        <div class="ability-card">
+            <label for="wisdomInput">Мудрость</label>
+            <input type="number" id="wisdomInput" min="1" max="30">
+            <span id="wisdomModifier">+0</span>
+        </div>
+
+        <div class="ability-card">
+            <label for="charismaInput">Харизма</label>
+            <input type="number" id="charismaInput" min="1" max="30">
+            <span id="charismaModifier">+0</span>
+        </div>
+    </div>
+
+    <h2>Параметры персонажа</h2>
+
+    <div class="info-block">
+        <div class="info-card">
+            <span>HP</span>
+            <strong id="hpValue">—</strong>
+        </div>
+
+        <div class="info-card">
+            <span>Скорость</span>
+            <strong id="speedValue">—</strong>
+        </div>
+
+        <div class="info-card">
+            <span>Кость здоровья</span>
+            <strong id="hitDieValue">—</strong>
+        </div>
+
+        <div class="info-card">
+            <span>Бонус мастерства</span>
+            <strong id="proficiencyValue">—</strong>
+        </div>
+    </div>
+
+    <div class="buttons-block">
+        <button id="generateButton">Сгенерировать персонажа</button>
+        <button id="downloadButton" disabled>Скачать JSON</button>
+    </div>
+
+    <p id="statusText">Данные ещё не загружены.</p>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

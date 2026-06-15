@@ -1,0 +1,117 @@
+body {
+    font-family: Arial, sans-serif;
+    background: #caa875;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    width: 850px;
+    margin: 40px auto;
+    padding: 25px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 0 10px #cccccc;
+}
+
+h1 {
+    text-align: center;
+}
+
+h2 {
+    margin-top: 30px;
+}
+
+.select-block {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+}
+
+.field label {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+select,
+input {
+    padding: 9px;
+    font-size: 15px;
+}
+
+.abilities-block {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+}
+
+.ability-card {
+    background: #f3f3f3;
+    padding: 15px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+}
+
+.ability-card label {
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+
+.ability-card input {
+    text-align: center;
+    font-size: 18px;
+}
+
+.ability-card span {
+    margin-top: 8px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.info-block {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+}
+
+.info-card {
+    background: #f3f3f3;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.info-card span {
+    display: block;
+    margin-bottom: 8px;
+    color: #555555;
+}
+
+.info-card strong {
+    font-size: 18px;
+}
+
+.buttons-block {
+    margin-top: 30px;
+    display: flex;
+    gap: 15px;
+}
+
+button {
+    padding: 12px 18px;
+    cursor: pointer;
+    font-size: 15px;
+}
+
+#statusText {
+    margin-top: 20px;
+    padding: 12px;
+    background: #f3f3f3;
+    border-radius: 8px;
+}
