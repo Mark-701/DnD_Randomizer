@@ -1,0 +1,6 @@
+{
+  "flags": {
+    "newCheckout": true,
+    "payments.applePay": false
+  }
+}
