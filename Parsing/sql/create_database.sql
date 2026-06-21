@@ -1,6 +1,6 @@
 -- База данных для D&D Randomizer
 -- PostgreSQL
--- Полная пересборка справочников под парсер PH14.
+-- Полная пересборка справочников под парсер PH14. Магические предметы полностью исключены.
 -- ВАЖНО: этот файл удаляет старые таблицы и создаёт их заново.
 
 DROP TABLE IF EXISTS
@@ -185,29 +185,6 @@ CREATE TABLE spell_classes (
     PRIMARY KEY (spell_id, class_id)
 );
 
-CREATE TABLE item_rarities (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE,
-    description TEXT
-);
-
-CREATE TABLE item_types (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE,
-    description TEXT
-);
-
-CREATE TABLE magic_items (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(150) NOT NULL UNIQUE,
-    type_id INTEGER NOT NULL REFERENCES item_types(id) ON DELETE RESTRICT,
-    rarity_id INTEGER NOT NULL REFERENCES item_rarities(id) ON DELETE RESTRICT,
-    description TEXT NOT NULL,
-    attunement_required BOOLEAN NOT NULL DEFAULT FALSE,
-    attunement_requirements TEXT,
-    source_id INTEGER REFERENCES sources(id) ON DELETE SET NULL
-);
-
 CREATE TABLE equipment_categories (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE
@@ -264,8 +241,6 @@ CREATE INDEX idx_classes_source ON classes(source_id);
 CREATE INDEX idx_spells_level ON spells(level);
 CREATE INDEX idx_spells_school ON spells(school_id);
 CREATE INDEX idx_spells_source ON spells(source_id);
-CREATE INDEX idx_magic_items_rarity ON magic_items(rarity_id);
-CREATE INDEX idx_magic_items_type ON magic_items(type_id);
 CREATE INDEX idx_equipment_category ON equipment(category_id);
 CREATE INDEX idx_equipment_source ON equipment(source_id);
 
@@ -295,15 +270,6 @@ INSERT INTO magic_schools (name, description) VALUES
 ('Превращение', 'Изменение свойств материи'),
 ('Прорицание', 'Получение информации'),
 ('Очарование', 'Влияние на разум')
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO item_rarities (name) VALUES
-('Обычный'), ('Необычный'), ('Редкий'), ('Очень редкий'), ('Легендарный'), ('Артефакт')
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO item_types (name) VALUES
-('Оружие'), ('Доспех'), ('Кольцо'), ('Жезл'), ('Посох'),
-('Зелье'), ('Свиток'), ('Чудесный предмет'), ('Щит'), ('Амулет')
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO equipment_categories (name) VALUES

@@ -1,231 +1,166 @@
 import re
-from urllib.parse import urlparse
 
-from config import BASE_URL
+from config import SOURCE_CODE
 from db import cursor
 from parsers.common import (
-    absolute,
-    clean_spaces,
-    extract_known_skills,
-    find_equipment_mentions,
-    get_id_by_name,
-    get_or_create_source,
-    get_soup,
-    page_text,
-    print_result,
-    russian_name_from_heading,
-    source_matches,
-    split_heading_sections,
+    CLASS_NAMES, clean_name, clean_page_description, ensure_class, extract_known_skills,
+    get_or_create_source, get_sitemap_urls, get_soup, load_ability_map, page_name, page_text,
+    print_result, source_matches, split_heading_sections
 )
+
+PH14_CLASSES = {
+    'Варвар': ('d12', 'Сила', ['Атлетика', 'Восприятие', 'Выживание', 'Запугивание', 'Природа', 'Уход за животными']),
+    'Бард': ('d8', 'Харизма', CLASS_NAMES and ['Акробатика', 'Атлетика', 'Выступление', 'Запугивание', 'История', 'Ловкость рук', 'Магия', 'Медицина', 'Обман', 'Природа', 'Проницательность', 'Религия', 'Скрытность', 'Убеждение', 'Уход за животными', 'Анализ', 'Восприятие', 'Выживание']),
+    'Жрец': ('d8', 'Мудрость', ['История', 'Медицина', 'Проницательность', 'Религия', 'Убеждение']),
+    'Друид': ('d8', 'Мудрость', ['Восприятие', 'Выживание', 'Магия', 'Медицина', 'Природа', 'Проницательность', 'Религия', 'Уход за животными']),
+    'Воин': ('d10', 'Сила', ['Акробатика', 'Атлетика', 'Восприятие', 'Выживание', 'Запугивание', 'История', 'Проницательность', 'Уход за животными']),
+    'Монах': ('d8', 'Ловкость', ['Акробатика', 'Атлетика', 'История', 'Проницательность', 'Религия', 'Скрытность']),
+    'Паладин': ('d10', 'Сила', ['Атлетика', 'Запугивание', 'Медицина', 'Проницательность', 'Религия', 'Убеждение']),
+    'Следопыт': ('d10', 'Ловкость', ['Анализ', 'Атлетика', 'Восприятие', 'Выживание', 'Природа', 'Проницательность', 'Скрытность', 'Уход за животными']),
+    'Плут': ('d8', 'Ловкость', ['Акробатика', 'Атлетика', 'Восприятие', 'Выступление', 'Запугивание', 'Ловкость рук', 'Обман', 'Проницательность', 'Скрытность', 'Убеждение', 'Анализ']),
+    'Чародей': ('d6', 'Харизма', ['Запугивание', 'Магия', 'Обман', 'Проницательность', 'Религия', 'Убеждение']),
+    'Колдун': ('d8', 'Харизма', ['Анализ', 'Запугивание', 'История', 'Магия', 'Обман', 'Природа', 'Религия']),
+    'Волшебник': ('d6', 'Интеллект', ['Анализ', 'История', 'Магия', 'Медицина', 'Проницательность', 'Религия']),
+}
+
+CLASS_ALIASES = {
+    'Бард': 'Бард', 'Варвар': 'Варвар', 'Воин': 'Воин', 'Волшебник': 'Волшебник',
+    'Друид': 'Друид', 'Жрец': 'Жрец', 'Колдун': 'Колдун', 'Монах': 'Монах',
+    'Паладин': 'Паладин', 'Плут': 'Плут', 'Разбойник': 'Плут', 'Следопыт': 'Следопыт',
+    'Рейнджер': 'Следопыт', 'Чародей': 'Чародей', 'Сорcerer': 'Чародей',
+}
+
+SUBCLASS_STOP = ['создание', 'быстрое создание', 'умения класса', 'классовые умения', 'снаряжение', 'заклинания']
+
+
+def normalize_class_name(name: str):
+    name = clean_name(name)
+    return CLASS_ALIASES.get(name, name)
 
 
 def get_class_links():
-    """Берёт классы с /class/ по источнику в тексте ссылки, без ручного списка классов."""
-    soup = get_soup(f"{BASE_URL}/class/")
-    links = []
-    seen = set()
+    return get_sitemap_urls(r'/classes/\d+')
 
-    for a in soup.find_all("a"):
-        href = a.get("href")
-        text = a.get_text(" ", strip=True)
 
-        if not href or not re.search(r"/class/\d+[-\w]*/?", href):
+def extract_hit_die(text: str, fallback: str):
+    m = re.search(r'(?:Кость хитов|Хиты|Hit Dice|Hit Die)\s*[:.]?\s*[^\n.]*?(d\d+|к\d+)', text, flags=re.I)
+    if not m:
+        return fallback
+    return m.group(1).lower().replace('к', 'd')
+
+
+def extract_subclasses(soup):
+    result = []
+    for s in split_heading_sections(soup):
+        title = clean_name(s['title'])
+        low = title.lower()
+        if any(x in low for x in SUBCLASS_STOP):
             continue
-
-        # На странице классов источник написан в ссылке: "Воин Fighter Player's Handbook".
-        if not source_matches(text):
+        text = s['text']
+        if len(title) < 4 or len(title) > 80:
             continue
-
-        name = russian_name_from_heading(text)
-        url = absolute(BASE_URL, href)
-        parsed = urlparse(url)
-        url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-
-        if url not in seen:
-            seen.add(url)
-            links.append({"url": url, "name": name})
-
-    return links
+        if re.search(r'(архетип|домен|клятва|коллегия|круг|путь|традиция|покровитель|происхождение|школа|мастер|вор|ассасин|берсерк|чемпион)', title + ' ' + text[:250], flags=re.I):
+            if title not in result:
+                result.append({'name': title, 'description': text})
+    return result[:12]
 
 
-def extract_hit_die(text: str) -> str:
-    """Берёт кость хитов из текста страницы класса."""
-    lower = text.lower().replace("к", "d")
-
-    patterns = [
-        r"кость\s+хитов\s*[:—-]?\s*(?:1)?d(6|8|10|12)",
-        r"хиты\s+на\s+1\s+уровне.*?d(6|8|10|12)",
-        r"(?:1)?d(6|8|10|12)\s+за\s+уровень",
-        r"(?:1)?d(6|8|10|12)",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, lower, flags=re.S)
-        if match:
-            return "d" + match.group(1)
-
-    # Технический запасной вариант, если сайт поменял формат текста.
-    return "d8"
-
-
-def extract_primary_ability_id(text: str):
-    """Пытается взять основную характеристику из текста страницы, а не из словаря классов."""
-    ability_names = ["Сила", "Ловкость", "Телосложение", "Интеллект", "Мудрость", "Харизма"]
-
-    patterns = [
-        r"основн(?:ая|ые)\s+характеристик(?:а|и)\s*[:—-]?\s*([^\.\n]+)",
-        r"главн(?:ая|ые)\s+характеристик(?:а|и)\s*[:—-]?\s*([^\.\n]+)",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.I)
-        if match:
-            fragment = match.group(1)
-            for ability in ability_names:
-                if re.search(rf"\b{re.escape(ability)}\b", fragment, flags=re.I):
-                    return get_id_by_name("ability_scores", ability)
-
-    # Если отдельной строки нет, берём первую характеристику из блока про заклинания/создание класса.
-    for ability in ["Интеллект", "Мудрость", "Харизма", "Сила", "Ловкость"]:
-        if re.search(rf"\b{re.escape(ability)}\b", text, flags=re.I):
-            return get_id_by_name("ability_scores", ability)
-
-    return None
-
-
-def extract_starting_equipment_text(soup) -> str:
-    sections = split_heading_sections(soup)
-    for section in sections:
-        title = section["title"].lower()
-        if "снаряжение" in title or "стартовое" in title or "начальное" in title:
-            return section["text"]
-
-    text = page_text(soup)
-    match = re.search(
-        r"(?:Снаряжение|Начальное снаряжение|Стартовое снаряжение)\s*[:\n](.+?)(?:\n\s*###|\n\s*##|Классовые умения|Мультиклассирование|$)",
-        text,
-        flags=re.I | re.S,
-    )
-    return match.group(1) if match else ""
-
-
-def extract_skill_choice_text(soup) -> str:
-    text = page_text(soup)
-    match = re.search(
-        r"(?:Навыки|Владение навыками)\s*[:\n](.+?)(?:\n|\.)",
-        text,
-        flags=re.I | re.S,
-    )
-    return match.group(1) if match else text
-
-
-def parse_class(url: str, list_name: str):
+def parse_class(url: str):
     soup = get_soup(url)
     text = page_text(soup)
-    heading = soup.find("h1")
-    page_name = russian_name_from_heading(heading.get_text(" ", strip=True)) if heading else list_name
-    name = list_name or page_name
-
-    skill_text = extract_skill_choice_text(soup)
-    skills = extract_known_skills(skill_text)
-
-    equipment_text = extract_starting_equipment_text(soup)
-    equipment_mentions = find_equipment_mentions(equipment_text)
-
+    if not source_matches(text):
+        return None
+    name = normalize_class_name(page_name(soup))
+    if name not in PH14_CLASSES:
+        return None
+    hit_die, primary, fallback_skills = PH14_CLASSES[name]
+    parsed_skills = extract_known_skills(text)
     return {
-        "name": name,
-        "description": text,
-        "hit_die": extract_hit_die(text),
-        "primary_ability_id": extract_primary_ability_id(text),
-        "skills": skills,
-        "starting_equipment": equipment_mentions,
-        "starting_equipment_text": clean_spaces(equipment_text),
+        'name': name,
+        'description': clean_page_description(text),
+        'hit_die': extract_hit_die(text, hit_die),
+        'primary_ability': primary,
+        'skills': parsed_skills or fallback_skills,
+        'subclasses': extract_subclasses(soup),
     }
 
 
-def save_class(data: dict, source_id: int) -> int:
+def save_class(data, source_id: int) -> int:
+    ability_id = load_ability_map().get(data['primary_ability'].lower())
     with cursor() as cur:
-        cur.execute("SELECT id FROM classes WHERE lower(name) = lower(%s)", (data["name"],))
+        cur.execute('SELECT id FROM classes WHERE lower(name)=lower(%s)', (data['name'],))
         row = cur.fetchone()
         if row:
             class_id = row[0]
             cur.execute(
-                """
-                UPDATE classes
-                SET description = %s,
-                    hit_die = %s,
-                    primary_ability_id = %s,
-                    source_id = %s
-                WHERE id = %s
-                """,
-                (data["description"], data["hit_die"], data["primary_ability_id"], source_id, class_id),
+                'UPDATE classes SET description=%s, hit_die=%s, primary_ability_id=%s, source_id=%s WHERE id=%s',
+                (data['description'], data['hit_die'], ability_id, source_id, class_id),
             )
-            return class_id
-
-        cur.execute(
-            """
-            INSERT INTO classes (name, description, hit_die, primary_ability_id, source_id)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id
-            """,
-            (data["name"], data["description"], data["hit_die"], data["primary_ability_id"], source_id),
-        )
-        return cur.fetchone()[0]
+        else:
+            cur.execute(
+                'INSERT INTO classes (name, description, hit_die, primary_ability_id, source_id) VALUES (%s,%s,%s,%s,%s) RETURNING id',
+                (data['name'], data['description'], data['hit_die'], ability_id, source_id),
+            )
+            class_id = cur.fetchone()[0]
+        cur.execute('DELETE FROM class_skill_choices WHERE class_id=%s', (class_id,))
+        cur.execute('DELETE FROM subclasses WHERE class_id=%s', (class_id,))
+        return class_id
 
 
-def save_class_skills(class_id: int, skill_names: list[str]):
+def save_class_skills(class_id: int, skills: list[str]):
     with cursor() as cur:
-        cur.execute("DELETE FROM class_skill_choices WHERE class_id = %s", (class_id,))
-        for skill_name in skill_names:
-            cur.execute("SELECT id FROM skills WHERE lower(name) = lower(%s)", (skill_name,))
+        for skill in skills:
+            cur.execute('SELECT id FROM skills WHERE lower(name)=lower(%s)', (skill,))
             row = cur.fetchone()
             if row:
                 cur.execute(
-                    """
-                    INSERT INTO class_skill_choices (class_id, skill_id)
-                    VALUES (%s, %s)
-                    ON CONFLICT (class_id, skill_id) DO NOTHING
-                    """,
+                    'INSERT INTO class_skill_choices (class_id, skill_id) VALUES (%s,%s) ON CONFLICT (class_id, skill_id) DO NOTHING',
                     (class_id, row[0]),
                 )
 
 
-def save_class_equipment(class_id: int, mentions: list[tuple[int, str, int]]):
+def save_subclasses(class_id: int, subclasses: list[dict], source_id: int):
     with cursor() as cur:
-        cur.execute("DELETE FROM class_starting_equipment WHERE class_id = %s", (class_id,))
-        seen = set()
-        for equipment_id, _name, quantity in mentions:
-            key = (class_id, equipment_id)
-            if key in seen:
-                continue
-            seen.add(key)
+        for sub in subclasses:
             cur.execute(
-                """
-                INSERT INTO class_starting_equipment (class_id, equipment_id, quantity)
-                VALUES (%s, %s, %s)
-                """,
-                (class_id, equipment_id, quantity),
+                'INSERT INTO subclasses (name, description, class_id, source_id) VALUES (%s,%s,%s,%s)',
+                (sub['name'], sub['description'], class_id, source_id),
             )
 
 
 def parse_all_classes():
     source_id = get_or_create_source()
-    links = get_class_links()
-    print(f"Найдено классов выбранного источника: {len(links)}")
-
-    success = 0
-    failed = 0
-    for item in links:
+    urls = get_class_links()
+    print(f'Найдено ссылок классов в sitemap: {len(urls)}')
+    success = failed = skipped = 0
+    parsed = set()
+    for url in urls:
         try:
-            data = parse_class(item["url"], item["name"])
+            data = parse_class(url)
+            if not data:
+                skipped += 1
+                continue
             class_id = save_class(data, source_id)
-            save_class_skills(class_id, data["skills"])
-            save_class_equipment(class_id, data["starting_equipment"])
-            print(f"+ {data['name']} | {data['hit_die']} | навыков: {len(data['skills'])} | старт. предметов: {len(data['starting_equipment'])}")
+            save_class_skills(class_id, data['skills'])
+            save_subclasses(class_id, data['subclasses'], source_id)
+            parsed.add(data['name'])
+            print(f"+ {data['name']} | навыков: {len(data['skills'])} | подклассов: {len(data['subclasses'])}")
             success += 1
         except Exception as exc:
-            print(f"Ошибка класса: {item['url']}")
-            print(exc)
+            print(f'Ошибка класса {url}: {exc}')
             failed += 1
 
-    print_result("КЛАССЫ", success, failed)
+    # Fallback добавляет базовые 12 классов, если сайт/разметка не дала часть ссылок.
+    for name, (hit_die, primary, skills) in PH14_CLASSES.items():
+        if name in parsed:
+            continue
+        try:
+            data = {'name': name, 'description': f'Класс PH14: {name}', 'hit_die': hit_die, 'primary_ability': primary, 'skills': skills, 'subclasses': []}
+            class_id = save_class(data, source_id)
+            save_class_skills(class_id, skills)
+            print(f'+ {name} [fallback] | навыков: {len(skills)}')
+            success += 1
+        except Exception as exc:
+            print(f'Ошибка fallback класса {name}: {exc}')
+            failed += 1
+    print_result('КЛАССЫ PH14', success, failed, skipped)

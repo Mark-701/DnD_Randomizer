@@ -1,19 +1,15 @@
-import os
-from contextlib import contextmanager
-
 import psycopg2
-from dotenv import load_dotenv
-
-load_dotenv()
+from contextlib import contextmanager
+from config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 
 
 def connect():
     return psycopg2.connect(
-        host=os.getenv("DB_HOST", "localhost"),
-        port=os.getenv("DB_PORT", "7010"),
-        database=os.getenv("DB_NAME", "DnD"),
-        user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD", "701"),
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
     )
 
 
