@@ -3,34 +3,34 @@
 -- Полная пересборка справочников под парсер PH14.
 -- ВАЖНО: этот файл удаляет старые таблицы и создаёт их заново.
 
-DROP TABLE IF EXISTS
-    background_tools,
-    background_skills,
-    backgrounds,
-    class_starting_equipment,
-    class_skill_choices,
-    subclasses,
-    spell_classes,
-    spells,
-    feat_ability_bonuses,
-    feats,
-    race_ability_bonuses,
-    race_languages,
-    subraces,
-    races,
-    equipment,
-    equipment_categories,
-    magic_items,
-    item_types,
-    item_rarities,
-    tool_proficiencies,
-    skills,
-    ability_scores,
-    magic_schools,
-    languages,
-    classes,
-    sources
-CASCADE;
+-- DROP TABLE IF EXISTS
+--     background_tools,
+--     background_skills,
+--     backgrounds,
+--     class_starting_equipment,
+--     class_skill_choices,
+--     subclasses,
+--     spell_classes,
+--     spells,
+--     feat_ability_bonuses,
+--     feats,
+--     race_ability_bonuses,
+--     race_languages,
+--     subraces,
+--     races,
+--     equipment,
+--     equipment_categories,
+--     magic_items,
+--     item_types,
+--     item_rarities,
+--     tool_proficiencies,
+--     skills,
+--     ability_scores,
+--     magic_schools,
+--     languages,
+--     classes,
+--     sources
+-- CASCADE;
 
 CREATE TABLE sources (
     id SERIAL PRIMARY KEY,

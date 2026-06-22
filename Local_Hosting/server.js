@@ -49,6 +49,33 @@ app.get("/api/races", async (req, res) => {
     }
 });
 
+app.get("/api/subraces", async (req, res) => {
+    try {
+        const { raceId } = req.query;
+
+        let result;
+
+        if (raceId) {
+            result = await pool.query(`
+                SELECT id, name, description, race_id
+                FROM subraces
+                WHERE race_id = $1
+                ORDER BY name
+            `, [raceId]);
+        } else {
+            result = await pool.query(`
+                SELECT id, name, description, race_id
+                FROM subraces
+                ORDER BY name
+            `);
+        }
+
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.get("/api/classes", async (req, res) => {
     try {
         const result = await pool.query(`
@@ -56,6 +83,33 @@ app.get("/api/classes", async (req, res) => {
             FROM classes
             ORDER BY name
         `);
+
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get("/api/subclasses", async (req, res) => {
+    try {
+        const { classId } = req.query;
+
+        let result;
+
+        if (classId) {
+            result = await pool.query(`
+                SELECT id, name, description, class_id
+                FROM subclasses
+                WHERE class_id = $1
+                ORDER BY name
+            `, [classId]);
+        } else {
+            result = await pool.query(`
+                SELECT id, name, description, class_id
+                FROM subclasses
+                ORDER BY name
+            `);
+        }
 
         res.json(result.rows);
     } catch (error) {
@@ -77,14 +131,193 @@ app.get("/api/backgrounds", async (req, res) => {
     }
 });
 
+app.get("/api/spells", async (req, res) => {
+    try {
+        const { classId, level } = req.query;
+
+        const conditions = [];
+        const params = [];
+
+        if (classId) {
+            params.push(classId);
+            conditions.push(`c.id = $${params.length}`);
+        }
+
+        if (level !== undefined && level !== "") {
+            params.push(Number(level));
+            conditions.push(`sp.level = $${params.length}`);
+        }
+
+        const whereSql = conditions.length > 0
+            ? `WHERE ${conditions.join(" AND ")}`
+            : "";
+
+        const result = await pool.query(`
+            SELECT
+                sp.id,
+                sp.name,
+                sp.level,
+                ms.name AS school,
+                sp.casting_time,
+                sp."range",
+                sp.components,
+                sp.material_components,
+                sp.duration,
+                sp.description,
+                sp.higher_levels,
+                sp.is_ritual,
+                sp.is_concentration,
+                STRING_AGG(DISTINCT c.name, ', ' ORDER BY c.name) AS classes
+            FROM spells sp
+            LEFT JOIN magic_schools ms ON ms.id = sp.school_id
+            LEFT JOIN spell_classes sc ON sc.spell_id = sp.id
+            LEFT JOIN classes c ON c.id = sc.class_id
+            ${whereSql}
+            GROUP BY
+                sp.id,
+                sp.name,
+                sp.level,
+                ms.name,
+                sp.casting_time,
+                sp."range",
+                sp.components,
+                sp.material_components,
+                sp.duration,
+                sp.description,
+                sp.higher_levels,
+                sp.is_ritual,
+                sp.is_concentration
+            ORDER BY sp.level, sp.name
+        `, params);
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error("Ошибка загрузки заклинаний:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get("/api/equipment", async (req, res) => {
+    try {
+        const { categoryId, classId } = req.query;
+
+        if (classId) {
+            const result = await pool.query(`
+                SELECT
+                    e.id,
+                    e.name,
+                    ec.name AS category,
+                    e.cost_value,
+                    e.cost_coin,
+                    e.weight,
+                    e.description,
+                    cse.quantity
+                FROM class_starting_equipment cse
+                JOIN equipment e ON e.id = cse.equipment_id
+                LEFT JOIN equipment_categories ec ON ec.id = e.category_id
+                WHERE cse.class_id = $1
+                ORDER BY ec.name, e.name
+            `, [classId]);
+
+            return res.json(result.rows);
+        }
+
+        let result;
+
+        if (categoryId) {
+            result = await pool.query(`
+                SELECT
+                    e.id,
+                    e.name,
+                    ec.name AS category,
+                    e.cost_value,
+                    e.cost_coin,
+                    e.weight,
+                    e.description
+                FROM equipment e
+                LEFT JOIN equipment_categories ec ON ec.id = e.category_id
+                WHERE e.category_id = $1
+                ORDER BY ec.name, e.name
+            `, [categoryId]);
+        } else {
+            result = await pool.query(`
+                SELECT
+                    e.id,
+                    e.name,
+                    ec.name AS category,
+                    e.cost_value,
+                    e.cost_coin,
+                    e.weight,
+                    e.description
+                FROM equipment e
+                LEFT JOIN equipment_categories ec ON ec.id = e.category_id
+                ORDER BY ec.name, e.name
+            `);
+        }
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error("Ошибка загрузки снаряжения:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get("/api/equipment-categories", async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, name
+            FROM equipment_categories
+            ORDER BY name
+        `);
+
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get("/api/feats", async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                f.id,
+                f.name,
+                f.description,
+                f.prerequisite,
+                f.benefit,
+                STRING_AGG(
+                    DISTINCT
+                    CASE
+                        WHEN a.name IS NOT NULL THEN a.name || ' +' || fab.bonus
+                        ELSE NULL
+                    END,
+                    ', '
+                    ORDER BY
+                    CASE
+                        WHEN a.name IS NOT NULL THEN a.name || ' +' || fab.bonus
+                        ELSE NULL
+                    END
+                ) AS ability_bonuses
+            FROM feats f
+            LEFT JOIN feat_ability_bonuses fab ON fab.feat_id = f.id
+            LEFT JOIN ability_scores a ON a.id = fab.ability_score_id
+            GROUP BY f.id, f.name, f.description, f.prerequisite, f.benefit
+            ORDER BY f.name
+        `);
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error("Ошибка загрузки черт:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post("/api/generate-character", async (req, res) => {
     try {
         let { level } = req.body;
 
-        // Если уровень не передали, персонаж будет 1 уровня
         level = Number(level) || 1;
 
-        // Ограничиваем уровень правилами D&D: от 1 до 20
         if (level < 1) {
             level = 1;
         }
@@ -93,7 +326,6 @@ app.post("/api/generate-character", async (req, res) => {
             level = 20;
         }
 
-        // Случайная раса
         const raceResult = await pool.query(`
             SELECT id, name, description, speed
             FROM races
@@ -101,7 +333,6 @@ app.post("/api/generate-character", async (req, res) => {
             LIMIT 1
         `);
 
-        // Случайный класс
         const classResult = await pool.query(`
             SELECT id, name, description, hit_die
             FROM classes
@@ -109,7 +340,6 @@ app.post("/api/generate-character", async (req, res) => {
             LIMIT 1
         `);
 
-        // Случайная предыстория
         const backgroundResult = await pool.query(`
             SELECT id, name, description, feature_name, feature_description
             FROM backgrounds
@@ -133,7 +363,6 @@ app.post("/api/generate-character", async (req, res) => {
         const characterClass = classResult.rows[0];
         const background = backgroundResult.rows[0];
 
-        // Случайная подраса, если она есть у выбранной расы
         const subraceResult = await pool.query(`
             SELECT id, name, description
             FROM subraces
@@ -144,20 +373,21 @@ app.post("/api/generate-character", async (req, res) => {
 
         const subrace = subraceResult.rows.length > 0 ? subraceResult.rows[0] : null;
 
-        // Генерация характеристик по правилам D&D
         const abilities = generateAbilities();
 
-        // Применяем расовые и подрасовые бонусы
         await applyRaceBonuses(abilities, race.id, subrace ? subrace.id : null);
 
-        // Модификатор Телосложения
         const constitutionModifier = getAbilityModifier(abilities["Телосложение"]);
 
-        // Максимум здоровья
         const maxHp = calculateHp(characterClass.hit_die, level, constitutionModifier);
 
-        // Бонус мастерства
         const proficiencyBonus = getProficiencyBonus(level);
+
+        const characterSpells = await getRandomSpellsForClass(characterClass.id, level);
+
+        const characterEquipment = await getStartingEquipmentForClass(characterClass.id);
+
+        const characterFeats = await getRandomFeats(level);
 
         const character = {
             level: level,
@@ -181,7 +411,6 @@ app.post("/api/generate-character", async (req, res) => {
             abilities: abilities,
 
             modifiers: {
-
                 "Сила": getAbilityModifier(abilities["Сила"]),
                 "Ловкость": getAbilityModifier(abilities["Ловкость"]),
                 "Телосложение": getAbilityModifier(abilities["Телосложение"]),
@@ -193,7 +422,11 @@ app.post("/api/generate-character", async (req, res) => {
             backgroundFeature: {
                 name: background.feature_name,
                 description: background.feature_description
-            }
+            },
+
+            spells: characterSpells,
+            equipment: characterEquipment,
+            feats: characterFeats
         };
 
         res.json(character);
@@ -210,10 +443,6 @@ function rollD6() {
     return Math.floor(Math.random() * 6) + 1;
 }
 
-// 4d6 drop lowest:
-// бросаем 4 шестигранных кубика,
-// убираем самый маленький,
-// складываем оставшиеся 3
 function rollAbilityScore() {
     const rolls = [rollD6(), rollD6(), rollD6(), rollD6()];
 
@@ -233,15 +462,10 @@ function generateAbilities() {
     };
 }
 
-// Модификатор характеристики:
-// 10–11 = 0
-// 12–13 = +1
-// 8–9 = -1
 function getAbilityModifier(score) {
     return Math.floor((score - 10) / 2);
 }
 
-// Бонус мастерства по уровню
 function getProficiencyBonus(level) {
     if (level >= 17) {
         return 6;
@@ -262,12 +486,10 @@ function getProficiencyBonus(level) {
     return 2;
 }
 
-// Превращаем строку 'd6', 'd8', 'd10', 'd12' в число
 function getHitDieValue(hitDie) {
     return Number(String(hitDie).replace("d", ""));
 }
 
-// Среднее значение кости хитов при повышении уровня
 function getAverageHitDieValue(hitDie) {
     const hitDieValue = getHitDieValue(hitDie);
 
@@ -290,9 +512,6 @@ function getAverageHitDieValue(hitDie) {
     return Math.ceil(hitDieValue / 2);
 }
 
-// HP:
-// 1 уровень: максимум кости + CON
-// следующие уровни: среднее кости + CON
 function calculateHp(hitDie, level, constitutionModifier) {
     const hitDieValue = getHitDieValue(hitDie);
     const averageHitDieValue = getAverageHitDieValue(hitDie);
@@ -303,7 +522,6 @@ function calculateHp(hitDie, level, constitutionModifier) {
         hp += averageHitDieValue + constitutionModifier;
     }
 
-    // Чтобы HP не стало меньше 1
     if (hp < 1) {
         hp = 1;
     }
@@ -311,54 +529,177 @@ function calculateHp(hitDie, level, constitutionModifier) {
     return hp;
 }
 
-// Применение бонусов расы и подрасы
 async function applyRaceBonuses(abilities, raceId, subraceId) {
     const bonusesResult = await pool.query(`
         SELECT
+            rab.id,
+            rab.race_id,
+            rab.subrace_id,
             rab.bonus,
             rab.is_choice,
             rab.choice_count,
+            rab.description,
             a.name AS ability_name
         FROM race_ability_bonuses rab
         LEFT JOIN ability_scores a ON rab.ability_score_id = a.id
         WHERE rab.race_id = $1
            OR ($2::integer IS NOT NULL AND rab.subrace_id = $2)
-        ORDER BY rab.id
+        ORDER BY rab.is_choice, rab.id
     `, [raceId, subraceId]);
 
+    const choiceGroups = new Map();
+
     for (const bonus of bonusesResult.rows) {
-        // Обычный фиксированный бонус, например +2 к Ловкости
         if (bonus.is_choice === false && bonus.ability_name) {
-            abilities[bonus.ability_name] += bonus.bonus;
+            abilities[bonus.ability_name] += Number(bonus.bonus);
+            continue;
         }
 
-        // Бонус на выбор, например +1 к двум любым характеристикам
-        // Так как пользователь не выбирает вручную, выбираем случайно
-        if (bonus.is_choice === true) {
-            applyRandomChoiceBonus(
-                abilities,
+        if (bonus.is_choice === true && bonus.ability_name) {
+            const groupKey = [
+                bonus.race_id || "no-race",
+                bonus.subrace_id || "no-subrace",
+                bonus.bonus,
                 bonus.choice_count,
-                bonus.bonus
-            );
+                bonus.description || "choice"
+            ].join("|");
+
+            if (!choiceGroups.has(groupKey)) {
+                choiceGroups.set(groupKey, {
+                    bonus: Number(bonus.bonus),
+                    choiceCount: Number(bonus.choice_count),
+                    abilityNames: []
+                });
+            }
+
+            choiceGroups.get(groupKey).abilityNames.push(bonus.ability_name);
+        }
+    }
+
+    for (const group of choiceGroups.values()) {
+        applyRandomChoiceBonusFromList(
+            abilities,
+            group.abilityNames,
+            group.choiceCount,
+            group.bonus
+        );
+    }
+}
+
+function applyRandomChoiceBonusFromList(abilities, availableAbilityNames, choiceCount, bonusValue) {
+    const uniqueAbilities = [...new Set(availableAbilityNames)];
+
+    const shuffled = uniqueAbilities.sort(() => Math.random() - 0.5);
+
+    for (let i = 0; i < choiceCount && i < shuffled.length; i++) {
+        const abilityName = shuffled[i];
+
+        if (abilities[abilityName] !== undefined) {
+            abilities[abilityName] += bonusValue;
         }
     }
 }
 
-// Случайно выбирает характеристики для бонуса на выбор
-function applyRandomChoiceBonus(abilities, choiceCount, bonusValue) {
-    const abilityNames = Object.keys(abilities);
-
-    let finalBonus = Number(bonusValue);
-
-    if (finalBonus === 0) {
-        finalBonus = 1;
+function getMaxSpellLevel(characterLevel) {
+    if (characterLevel >= 17) {
+        return 9;
     }
 
-    const shuffled = abilityNames.sort(() => Math.random() - 0.5);
-
-    for (let i = 0; i < choiceCount && i < shuffled.length; i++) {
-        abilities[shuffled[i]] += finalBonus;
+    if (characterLevel >= 15) {
+        return 8;
     }
+
+    if (characterLevel >= 13) {
+        return 7;
+    }
+
+    if (characterLevel >= 11) {
+        return 6;
+    }
+
+    if (characterLevel >= 9) {
+        return 5;
+    }
+
+    if (characterLevel >= 7) {
+        return 4;
+    }
+
+    if (characterLevel >= 5) {
+        return 3;
+    }
+
+    if (characterLevel >= 3) {
+        return 2;
+    }
+
+    return 1;
+}
+
+async function getRandomSpellsForClass(classId, level) {
+    const maxSpellLevel = getMaxSpellLevel(level);
+
+    const result = await pool.query(`
+        SELECT
+            sp.id,
+            sp.name,
+            sp.level,
+            ms.name AS school,
+            sp.casting_time,
+            sp."range",
+            sp.components,
+            sp.duration
+        FROM spells sp
+        JOIN spell_classes sc ON sc.spell_id = sp.id
+        LEFT JOIN magic_schools ms ON ms.id = sp.school_id
+        WHERE sc.class_id = $1
+          AND sp.level <= $2
+        ORDER BY RANDOM()
+        LIMIT 8
+    `, [classId, maxSpellLevel]);
+
+    return result.rows;
+}
+
+async function getStartingEquipmentForClass(classId) {
+    const result = await pool.query(`
+        SELECT
+            e.id,
+            e.name,
+            ec.name AS category,
+            e.cost_value,
+            e.cost_coin,
+            e.weight,
+            e.description,
+            cse.quantity
+        FROM class_starting_equipment cse
+        JOIN equipment e ON e.id = cse.equipment_id
+        LEFT JOIN equipment_categories ec ON ec.id = e.category_id
+        WHERE cse.class_id = $1
+        ORDER BY ec.name, e.name
+    `, [classId]);
+
+    return result.rows;
+}
+
+async function getRandomFeats(level) {
+    if (level < 4) {
+        return [];
+    }
+
+    const result = await pool.query(`
+        SELECT
+            f.id,
+            f.name,
+            f.description,
+            f.prerequisite,
+            f.benefit
+        FROM feats f
+        ORDER BY RANDOM()
+        LIMIT 1
+    `);
+
+    return result.rows;
 }
 
 app.get("/", (req, res) => {

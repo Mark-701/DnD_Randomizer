@@ -128,6 +128,10 @@ async function generateCharacter() {
 
         fillCharacterForm(currentCharacter);
 
+        renderCharacterSpells(currentCharacter.spells || []);
+        renderCharacterEquipment(currentCharacter.equipment || []);
+        renderCharacterFeats(currentCharacter.feats || []);
+
         document.getElementById("downloadButton").disabled = false;
 
         statusText.textContent = "Персонаж успешно сгенерирован.";
@@ -363,11 +367,10 @@ function buildLssCharacterJson(character) {
             "_id": generateId()
         },
         edition: "2024",
-        spells: {
-            mode: "cards",
-            prepared: [],
-            book: []
-        },
+
+        // Заклинания для Long Story Short
+        spells: buildLssSpellsBlock(character),
+
         data: JSON.stringify(innerData),
         jsonType: "character",
         version: "2"
@@ -452,22 +455,12 @@ function buildCharacterData(character) {
             }
         },
 
-        spellsInfo: {
-            base: {
-                name: "base",
-                value: ""
-            },
-            save: {
-                name: "save",
-                value: ""
-            },
-            mod: {
-                name: "mod",
-                value: ""
-            }
-        },
+        spellsInfo: buildSpellsInfo(character),
 
-        spells: {},
+        // Дублируем заклинания внутрь data.
+        // Даже если Long Story Short не примет карточки,
+        // список заклинаний всё равно останется внутри персонажа.
+        spells: buildInnerSpellsMap(character),
         spellsPact: {},
 
         proficiency: character.proficiencyBonus || 2,
@@ -530,9 +523,9 @@ function buildCharacterData(character) {
                 value: makeTextDocument(character.backgroundDescription || "")
             },
             features: {
-                value: makeTextDocument(
-                    buildBackgroundFeatureText(character)
-                )
+            value: makeTextDocument(
+            buildFeaturesText(character)
+            )
             },
             prof: {
                 value: makeTextDocument("")
@@ -771,11 +764,38 @@ function buildEquipmentText(character) {
 
     return character.equipment
         .map(item => {
-            if (item.quantity && item.quantity > 1) {
-                return item.name + " x" + item.quantity;
+            const parts = [];
+
+            let name = item.name || "Без названия";
+
+            if (item.quantity && Number(item.quantity) > 1) {
+                name += " x" + item.quantity;
             }
 
-            return item.name;
+            parts.push(name);
+
+            if (item.category) {
+                parts.push("Категория: " + item.category);
+            }
+
+            if (item.cost_value || item.cost_coin) {
+                parts.push(
+                    "Цена: " +
+                    (item.cost_value || "—") +
+                    " " +
+                    (item.cost_coin || "")
+                );
+            }
+
+            if (item.weight) {
+                parts.push("Вес: " + item.weight);
+            }
+
+            if (item.description) {
+                parts.push(item.description);
+            }
+
+            return parts.join(" | ");
         })
         .join("\n");
 }
@@ -789,4 +809,312 @@ function generateId() {
     }
 
     return result;
+}
+
+function buildLssSpellsBlock(character) {
+    const spells = character.spells || [];
+
+    return {
+        mode: "cards",
+
+        // Подготовленные заклинания.
+        // Для простоты все сгенерированные заклинания считаем подготовленными.
+        prepared: spells.map(spell => buildLssSpellCard(spell)),
+
+        // Книга заклинаний.
+        // Дублируем туда же, чтобы Long Story Short точно видел список.
+        book: spells.map(spell => buildLssSpellCard(spell))
+    };
+}
+
+function buildLssSpellCard(spell) {
+    return {
+        id: "spell-" + generateId(),
+
+        name: spell.name || "Без названия",
+
+        level: Number(spell.level) || 0,
+
+        school: spell.school || "",
+
+        castingTime: spell.casting_time || "",
+
+        range: spell.range || "",
+
+        components: spell.components || "",
+
+        duration: spell.duration || "",
+
+        description: spell.description || "",
+
+        higherLevels: spell.higher_levels || "",
+
+        ritual: Boolean(spell.is_ritual),
+
+        concentration: Boolean(spell.is_concentration),
+
+        prepared: true
+    };
+}
+
+function buildSpellsInfo(character) {
+    return {
+        base: {
+            name: "base",
+            value: getSpellcastingAbility(character)
+        },
+        save: {
+            name: "save",
+            value: ""
+        },
+        mod: {
+            name: "mod",
+            value: ""
+        }
+    };
+}
+
+function getSpellcastingAbility(character) {
+    const className = String(character.class || "").toLowerCase();
+
+    if (
+        className.includes("волшебник") ||
+        className.includes("wizard")
+    ) {
+        return "Интеллект";
+    }
+
+    if (
+        className.includes("жрец") ||
+        className.includes("друид") ||
+        className.includes("следопыт") ||
+        className.includes("cleric") ||
+        className.includes("druid") ||
+        className.includes("ranger")
+    ) {
+        return "Мудрость";
+    }
+
+    if (
+        className.includes("бард") ||
+        className.includes("паладин") ||
+        className.includes("чародей") ||
+        className.includes("колдун") ||
+        className.includes("bard") ||
+        className.includes("paladin") ||
+        className.includes("sorcerer") ||
+        className.includes("warlock")
+    ) {
+        return "Харизма";
+    }
+
+    return "";
+}
+
+function buildInnerSpellsMap(character) {
+    const spells = character.spells || [];
+    const result = {};
+
+    for (const spell of spells) {
+        const id = "spell-" + generateId();
+
+        result[id] = {
+            id: id,
+            name: spell.name || "Без названия",
+            level: Number(spell.level) || 0,
+            school: spell.school || "",
+            casting_time: spell.casting_time || "",
+            range: spell.range || "",
+            components: spell.components || "",
+            duration: spell.duration || "",
+            description: spell.description || "",
+            higher_levels: spell.higher_levels || "",
+            is_ritual: Boolean(spell.is_ritual),
+            is_concentration: Boolean(spell.is_concentration)
+        };
+    }
+
+    return result;
+}
+
+function buildFeaturesText(character) {
+    const parts = [];
+
+    const backgroundText = buildBackgroundFeatureText(character);
+
+    if (backgroundText) {
+        parts.push(backgroundText);
+    }
+
+    const featsText = buildFeatsText(character);
+
+    if (featsText) {
+        parts.push("Черты:\n" + featsText);
+    }
+
+    const spellsText = buildSpellsText(character);
+
+    if (spellsText) {
+        parts.push("Заклинания:\n" + spellsText);
+    }
+
+    return parts.join("\n\n");
+}
+
+function buildSpellsText(character) {
+    if (!character.spells || character.spells.length === 0) {
+        return "";
+    }
+
+    return character.spells
+        .map(spell => {
+            const parts = [];
+
+            parts.push(spell.name || "Без названия");
+
+            if (spell.level !== undefined && spell.level !== null) {
+                parts.push("ур. " + spell.level);
+            }
+
+            if (spell.school) {
+                parts.push(spell.school);
+            }
+
+            if (spell.casting_time) {
+                parts.push("Время: " + spell.casting_time);
+            }
+
+            if (spell.range) {
+                parts.push("Дистанция: " + spell.range);
+            }
+
+            if (spell.components) {
+                parts.push("Компоненты: " + spell.components);
+            }
+
+            if (spell.duration) {
+                parts.push("Длительность: " + spell.duration);
+            }
+
+            return parts.join(" | ");
+        })
+        .join("\n");
+}
+
+function buildFeatsText(character) {
+    if (!character.feats || character.feats.length === 0) {
+        return "";
+    }
+
+    return character.feats
+        .map(feat => {
+            let text = feat.name || "Без названия";
+
+            if (feat.prerequisite) {
+                text += ". Требование: " + feat.prerequisite;
+            }
+
+            if (feat.description) {
+                text += ". " + feat.description;
+            }
+
+            if (feat.benefit) {
+                text += ". " + feat.benefit;
+            }
+
+            return text;
+        })
+        .join("\n");
+}
+
+function renderCharacterSpells(spells) {
+    const block = document.getElementById("characterSpellsBlock");
+
+    if (!block) {
+        return;
+    }
+
+    if (!spells || spells.length === 0) {
+        block.innerHTML = `<p class="empty-text">У персонажа нет заклинаний.</p>`;
+        return;
+    }
+
+    block.innerHTML = "";
+
+    for (const spell of spells) {
+        const card = document.createElement("div");
+        card.className = "extra-card";
+
+        card.innerHTML = `
+            <strong>${spell.name}</strong>
+            <p>Уровень: ${spell.level ?? "—"}</p>
+            <p>Школа: ${spell.school || "—"}</p>
+            <p>Время накладывания: ${spell.casting_time || "—"}</p>
+            <p>Дистанция: ${spell.range || "—"}</p>
+            <p>Компоненты: ${spell.components || "—"}</p>
+            <p>Длительность: ${spell.duration || "—"}</p>
+        `;
+
+        block.appendChild(card);
+    }
+}
+
+function renderCharacterEquipment(equipment) {
+    const block = document.getElementById("characterEquipmentBlock");
+
+    if (!block) {
+        return;
+    }
+
+    if (!equipment || equipment.length === 0) {
+        block.innerHTML = `<p class="empty-text">У персонажа нет стартового снаряжения.</p>`;
+        return;
+    }
+
+    block.innerHTML = "";
+
+    for (const item of equipment) {
+        const card = document.createElement("div");
+        card.className = "extra-card";
+
+        card.innerHTML = `
+            <strong>${item.name}</strong>
+            <p>Количество: ${item.quantity || 1}</p>
+            <p>Категория: ${item.category || "—"}</p>
+            <p>Цена: ${item.cost_value || "—"} ${item.cost_coin || ""}</p>
+            <p>Вес: ${item.weight || "—"}</p>
+            ${item.description ? `<p>${item.description}</p>` : ""}
+        `;
+
+        block.appendChild(card);
+    }
+}
+
+function renderCharacterFeats(feats) {
+    const block = document.getElementById("characterFeatsBlock");
+
+    if (!block) {
+        return;
+    }
+
+    if (!feats || feats.length === 0) {
+        block.innerHTML = `<p class="empty-text">У персонажа нет черт.</p>`;
+        return;
+    }
+
+    block.innerHTML = "";
+
+    for (const feat of feats) {
+        const card = document.createElement("div");
+        card.className = "extra-card";
+
+        card.innerHTML = `
+            <strong>${feat.name}</strong>
+            ${feat.prerequisite ? `<p>Требование: ${feat.prerequisite}</p>` : ""}
+            ${feat.description ? `<p>${feat.description}</p>` : ""}
+            ${feat.benefit ? `<p>${feat.benefit}</p>` : ""}
+        `;
+
+        block.appendChild(card);
+    }
 }
